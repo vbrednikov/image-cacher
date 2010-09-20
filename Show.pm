@@ -18,7 +18,7 @@ sub init {
     my $self=shift;
 
     $self->{cache}=Cache->new();
-    $self->{cache}->path("tmp1");
+    $self->{cache}->path("/home/bvk/image-cacher/tmp1");
     $self->{dl}=DL->new();
     $self->{dl}->cache($self->{cache});
     1;
@@ -39,7 +39,7 @@ sub error {
 sub run {
     my $self=shift;
     my $uri;
-    if(($uri)=$ENV{QUERY_STRING}=~/image_url=([^&]*)&?$/){
+    if(($uri)=$ENV{QUERY_STRING}=~/image_url=([^&]+)&?$/){
         $uri=~s/\+/ /g;
         $uri=~s/%([a-fA-F0-9][a-fA-F0-9])/pack("C", hex($1))/eg;
     } else {

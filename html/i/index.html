@@ -7,6 +7,7 @@
 body { background: #fff; color:0; }
 hr   { text-align: center; }
 div.inputform { padding: 2%; }
+.input { width: 512px; }
 </style>
 <script type="text/javascript">
 <!--
@@ -16,7 +17,7 @@ div.inputform { padding: 2%; }
 </head>
 <body onLoad="document.getElementsByTagName('input')[0].focus();">
 <div id="inputform" align="center">
-<form method="GET" action="images/"><label for="image_url">URL</label><input type="text" name="image_url" length="150" max_length="512" /><input type="Submit" /></form>
+<form method="GET" action="images/"><label for="image_url">URL:&nbsp;</label><input type="text" name="image_url" class="input" length="650" max_length="512" /><input type="Submit" /></form>
 </div>
 </body>
 </html>

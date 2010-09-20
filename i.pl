@@ -18,10 +18,15 @@ my $request=FCGI::Request(\*STDIN,\*STDOUT,\*STDERR,\%ENV, $socket);
 
 
 while($request->Accept() >= 0) {
-    my $view=new Show();
-    unless($view->run()){
-        print "Content-type: text/html\r\n\r\n";
-        print $view->error();
+    eval {
+        my $view=new Show();
+        unless($view->run()){
+            print "Content-type: text/html\r\n\r\n";
+            print $view->error();
+        }
+    };
+    if($@){
+        print "Content-type: text/html\r\n\r\nUnknown error :(";
     }
 }
 

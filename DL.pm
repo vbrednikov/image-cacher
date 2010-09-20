@@ -70,20 +70,6 @@ sub cache {
 #    }
 #}
 
-sub parse_uri {
-    my $self=shift;
-    my $uri=shift or return;
-
-    $uri =~s/([&;`'\\"|*?~<>^()\[\]{}\$])/\\$1/g;
-    $uri =~ s|^(\w+)://||;
-    my $scheme = $1;
-    my ($host,$path);
-    if($scheme eq 'http'){
-        ($host,$path) = $uri =~ m|([-_a-z0-9.]+)(/?.*)$|si;
-    }
-    unless ($path) { $path="/" }
-    return ($host,$path)
-}
 
 #sub jpegsize {
 ## copypaste with some changes from Image::Size::jpegsize
@@ -139,13 +125,34 @@ sub parse_uri {
 #    return ($x, $y, $id);
 #}
 
+sub parse_uri {
+    my $self=shift;
+    my $uri=shift or return $self->_error("No URI");
+
+    if($$uri=~/^\s*$/g){
+        print "Empty url";
+        return $self->_error("Empty url");
+    }
+    $$uri =~s/([&;`'\\"|*?~<>^()\[\]{}\$])/\\$1/g;
+    $$uri =~ s|^(\w+)://||;
+    my $scheme = $1;
+    my ($host,$path);
+    if($scheme && $scheme eq 'http'){
+        ($host,$path) = $$uri =~ m/([-_a-z0-9.]+(?::\d+)?)(\/?.*)$/si;
+    } else {
+        return $self->_error("Unknown scheme");
+    }
+    unless ($path) { $path="/" }
+    return ($host,$path)
+}
+
 sub parse_headers {
     my $self=shift;
     my $headers_raw=shift;
 
     my $headers={};
     my $code=undef;
-    if($headers_raw=~s/HTTP\/1.1 (\d+) [a-z0-9 ]+\r\n//gmsi){
+    if($headers_raw && $headers_raw=~s/HTTP\/1.1 (\d+) [a-z0-9 ]+\r\n//gmsi){
         $code=$1;
     } else {
         return $self->_error("Can't get HTTP response");
@@ -158,15 +165,18 @@ sub parse_headers {
 
 sub get {
     my $self=shift;
-    my $uri=shift or return;
-
-    my ($host,$path)=$self->parse_uri($uri) or return $self->_error("Could not parse $uri");
+    my $uri=shift or return $self->_error("No URI given");
+    my $port=80;
+    my ($host,$path)=$self->parse_uri(\$uri) or return $self->_error("Could not parse $uri: ".$self->error());
+    if($host=~/([^:]+):(\d+)/){
+        $port=$1;
+    }
 
     my $socket=IO::Socket::INET->new(
         PeerAddr => $host,
-        PeerPort => 80,
+        PeerPort => $port,
         Proto    => "tcp"
-    ) or return $self->_error("Can't open socket to $host: $!\n");
+    ) or return $self->_error("Can't open socket to $host:$port: $!\n");
 #    $socket->autoflush(1);
     $socket->send("GET $path HTTP/1.1\r\n");
     $socket->send("Host: $host\r\n");
@@ -205,9 +215,13 @@ sub get {
             $normal++;
         } else {
             if ($first==1) {
-                my ($raw_headers,$content)=$response=~m/^(?:\x0d?\x0a)*(.*)\x0d\x0a\x0d\x0a(.*)$/s; # FIXME: may not be found
+                my ($raw_headers,$content);
+                unless(($raw_headers,$content)=$response=~m/^(?:\x0d?\x0a)*(.*)\x0d\x0a\x0d\x0a(.*)$/s){
+                    return $self->_error("Unable to get any response");
+                }
 
-                unless($headers=\%{$self->parse_headers($raw_headers)}){
+                $headers=\%{$self->parse_headers($raw_headers)};
+                unless($headers){
                     return $self->_error("Can't parse headers: ".$self->error());
                 }
                 unless($headers->{code}){

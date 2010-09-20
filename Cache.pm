@@ -190,6 +190,7 @@ sub get {
                 print "$k: $v\r\n";
             }
         }
+	print "X-ImageCache-Status: cached\r\n";
         print "\r\n";
         binmode(IN);
         binmode(STDOUT);
