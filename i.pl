@@ -5,12 +5,12 @@ use Show;
 use strict;
 use warnings;
 
-use POSIX;
-fork_proc() && exit 0;
-POSIX::setsid() or die "Can't set sid: $!\n";
-chdir '/' or die "Can't chdir to /: $!\n";
-POSIX::setuid(65534) or die "Can't setuid 65534: $!\n";
-reopen_std();
+#use POSIX;
+#fork_proc() && exit 0;
+#POSIX::setsid() or die "Can't set sid: $!\n";
+#chdir '/' or die "Can't chdir to /: $!\n";
+#POSIX::setuid(65534) or die "Can't setuid 65534: $!\n";
+#reopen_std();
 
 my $count=0;
 my $socket=FCGI::OpenSocket(":9000",5);

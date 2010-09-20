@@ -74,12 +74,14 @@ sub parse_uri {
     my $self=shift;
     my $uri=shift or return;
 
+    $uri =~s/([&;`'\\"|*?~<>^()\[\]{}\$])/\\$1/g;
     $uri =~ s|^(\w+)://||;
     my $scheme = $1;
     my ($host,$path);
     if($scheme eq 'http'){
-        ($host,$path) = $uri =~ m|([^/]*)(/.*)$|s;
+        ($host,$path) = $uri =~ m|([-_a-z0-9.]+)(/?.*)$|si;
     }
+    unless ($path) { $path="/" }
     return ($host,$path)
 }
 
@@ -143,8 +145,10 @@ sub parse_headers {
 
     my $headers={};
     my $code=undef;
-    if($headers_raw=~s/HTTP\/1.1 (200) OK\r?\n//gms){
+    if($headers_raw=~s/HTTP\/1.1 (\d+) [a-z0-9 ]+\r\n//gmsi){
         $code=$1;
+    } else {
+        return $self->_error("Can't get HTTP response");
     }
     %{$headers}=( map { chomp; $1 => $2 if /^([^:]+?): (.*)$/ } split(/\r\n/,$headers_raw));
     $headers->{code}=$code;
@@ -156,13 +160,13 @@ sub get {
     my $self=shift;
     my $uri=shift or return;
 
-    my ($host,$path)=$self->parse_uri($uri) or die "Could not parse $uri\n";
+    my ($host,$path)=$self->parse_uri($uri) or return $self->_error("Could not parse $uri");
 
     my $socket=IO::Socket::INET->new(
         PeerAddr => $host,
         PeerPort => 80,
         Proto    => "tcp"
-    ) or die "Can't open socket: $!\n";
+    ) or return $self->_error("Can't open socket to $host: $!\n");
 #    $socket->autoflush(1);
     $socket->send("GET $path HTTP/1.1\r\n");
     $socket->send("Host: $host\r\n");
@@ -171,39 +175,41 @@ sub get {
     $socket->send("Connection: close\r\n");
     $socket->send("\r\n");
 
-    my $select=IO::Select->new($socket);
     my $normal=0;
     my $first=1;
     my $out_headers='';
     my $dl_size=0;
-    my $stream_size=0;
     my $headers;
-
+    my $size_known=0;
     my $fh=undef;
+
+    my $select=IO::Select->new($socket);
+
     while($select->can_read(60)){
         my $response='';
         my $buf=$self->{buf_size};
-        my $bytes_left=$self->{max_size} - $dl_size;
+        my $bytes_left=$self->{max_size}-$dl_size;
         if($bytes_left < 0){
             return $self->_error("Size limit exceeded. Downloaded $dl_size, max is $self->{max_size}");
             $socket->close();
             $select->remove($socket);
         }
-#        if($buf<$bytes_left){$buf=$bytes_left}
-        my $ret=$socket->sysread($response,$buf,0);#$stream_size);
-        system("echo Read $ret bytes from stream, offset $stream_size >> log");
+        my $ret=$socket->sysread($response,$buf,0);
         if (!defined $ret or $ret == 0) { # error or eof
-            system("echo ret $ret is undefined or 0, close socket and exit >> log");
+            if($size_known==0 && $out_headers ne '' && $dl_size > 0){
+                print $out_headers."\r\n";
+                $fh->seek(0,'SEEK_SET');
+                while(<$fh>){print}
+            }
             $socket->close(); $select->remove($socket);
             $normal++;
         } else {
-            $stream_size+=$ret;
-            system("echo stream size is $stream_size >> log");
             if ($first==1) {
                 my ($raw_headers,$content)=$response=~m/^(?:\x0d?\x0a)*(.*)\x0d\x0a\x0d\x0a(.*)$/s; # FIXME: may not be found
 
-                $headers=\%{$self->parse_headers($raw_headers)};
-
+                unless($headers=\%{$self->parse_headers($raw_headers)}){
+                    return $self->_error("Can't parse headers: ".$self->error());
+                }
                 unless($headers->{code}){
                     $socket->close(); $select->remove($socket);
                     return $self->_error("Did not get http response");
@@ -218,14 +224,14 @@ sub get {
                     }
                 }
 
-#                if(my ($size)=$headers=~/Content-Length: (\d+)/i) {
                 if($headers->{"Content-Length"}){
                     my $size=$headers->{"Content-Length"};
                     if ($size > $self->{max_size}){
                         $socket->close(); $select->remove($socket);
-                        return $self->_error("Size $size is too big (max is $self->{max_size}");
+                        return $self->_error("Size $size is too big (max is $self->{max_size})");
                     }
-                } 
+                    $size_known=1;
+                }
 
                 if($headers->{"Content-Type"}) {
                     my $content_type=$headers->{"Content-Type"};
@@ -252,22 +258,24 @@ sub get {
                     return $self->_error("URI $uri is not image (content type returned: ".$headers->{"Content-Type"}.")");
                 }
                 while(my ($k,$v)=each %{$headers}){
-                    $out_headers.="$k: $v\r\n" if $k ne 'code';
+#                    if ($k ne 'code' && $k ne 'Location'){
+                        $out_headers.="$k: $v\r\n";
+#                    }
                 }
-
 
                 $fh=$self->{cache}->tmpfile();  # File::Temp object
                 binmode($fh);
-                binmode(STDOUT);
-
-                print $out_headers;
-                print "\r\n$content";
+                if($size_known){
+                    binmode(STDOUT);
+                    print $out_headers;
+                    print "\r\n$content";
+                }
                 $dl_size+=length($content);
                 print $fh $content;
                 $first = 0;
             } else {
                 $dl_size+=length($response);
-                print $response;
+                print $response if $size_known;
                 print $fh $response;
             }
 

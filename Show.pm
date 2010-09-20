@@ -46,7 +46,6 @@ sub run {
         return $self->_error("Unknown parameter");
     }
     unless($self->{cache}->get($uri)){ # if found, printed to stdout
-        warn "Not found, dl $uri directly";
         my $dlfile=$self->{dl}->get($uri);   # print image or error to stdout and returns array to store it in cache
         if(!$dlfile){return $self->_error($self->{dl}->error()); }
         else { $self->{cache}->store(%{$dlfile}); }
