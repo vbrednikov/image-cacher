@@ -200,9 +200,8 @@ sub get {
         my $buf=$self->{buf_size};
         my $bytes_left=$self->{max_size}-$dl_size;
         if($bytes_left < 0){
+            $socket->close(); $select->remove($socket);
             return $self->_error("Size limit exceeded. Downloaded $dl_size, max is $self->{max_size}");
-            $socket->close();
-            $select->remove($socket);
         }
         my $ret=$socket->sysread($response,$buf,0);
         if (!defined $ret or $ret == 0) { # error or eof
